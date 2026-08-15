@@ -3,4 +3,4 @@ dist/
 .env
 server/.env
 *.log
-guide
+guide.txt
