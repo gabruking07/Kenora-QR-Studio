@@ -1,0 +1,1 @@
+import {Router} from 'express';import {auth} from '../middleware/auth.js';import {list,get,create,update,remove} from '../controllers/qr.controller.js';const r=Router();r.use(auth);r.get('/',list);r.get('/:id',get);r.post('/',create);r.put('/:id',update);r.delete('/:id',remove);export default r;

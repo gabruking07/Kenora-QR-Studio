@@ -1,0 +1,1 @@
+{"name":"kenora-qr-client","private":true,"version":"1.0.0","type":"module","scripts":{"dev":"vite","build":"vite build","preview":"vite preview"},"dependencies":{"axios":"^1.7.9","lucide-react":"^0.468.0","qrcode.react":"^4.2.0","react":"^18.3.1","react-dom":"^18.3.1","react-router-dom":"^7.1.1","zod":"^3.24.1"},"devDependencies":{"vite":"^6.0.5"}}

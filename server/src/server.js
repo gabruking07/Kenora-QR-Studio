@@ -1,0 +1,1 @@
+import dotenv from 'dotenv';dotenv.config();import mongoose from 'mongoose';import app from './app.js';const port=process.env.PORT||5000;mongoose.connect(process.env.MONGODB_URI).then(()=>console.log('MongoDB connected')).catch(e=>console.error('MongoDB connection unavailable:',e.message));app.listen(port,()=>console.log(`API listening on ${port}`));
