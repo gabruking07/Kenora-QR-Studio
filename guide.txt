@@ -1,0 +1,184 @@
+KENORA QR STUDIO — CURRENT CODEBASE GUIDE
+==========================================
+
+IMPORTANT SECURITY RULE
+-----------------------
+NEVER COMMIT .env. NEVER expose private API keys or server secrets in frontend code, and NEVER put server secrets in VITE_ variables. If a secret is committed, rotate it, remove it from the repository and history, then update deployment variables.
+
+1. PROJECT OVERVIEW
+-------------------
+Kenora QR Studio is a full-stack QR-code maker for KenoraTech. Authenticated users create a QR from structured input, preview it live, customize it, download PNG/SVG output, and save it to a private MongoDB collection. The user opens the landing page, chooses a QR type, is redirected to /login if not authenticated, signs in or registers, completes the builder, then downloads and/or saves the QR. Saved QRs are available from My QR Codes, History, and a detail page.
+
+2. FEATURES
+-----------
+Implemented frontend routes are /, /qr-types, /create, /features, /login, /register, /my-qr-codes, /history and /my-qr-codes/:id. App.jsx contains the current page components and routing.
+
+Implemented QR types (client/src/data.js): Website URL, WhatsApp, Wi-Fi, UPI Payment, Plain Text, Email, Phone, SMS, Location, vCard, Social Media, and Event. payloadFor() turns each form value into the relevant URL, WIFI, UPI, geo, vCard, or VEVENT payload.
+
+Other implemented features: responsive UI; persistent light/dark theme (context/AppContext.jsx); browser Web Share with clipboard fallback; JWT registration/login; private saved QR CRUD; name search; delete; branded assets; and API health endpoint.
+
+3. QR GENERATION
+----------------
+The client uses qrcode.react (QRCodeCanvas and QRCodeSVG) in Builder in client/src/App.jsx. React state supplies payloadFor(selected, values), foreground/background colors, size, margin, and correction level. A default Kenora QR Studio image is placed at the center of the canvas preview through imageSettings. The QR preview is generated in the browser; the server does not generate image files.
+
+Client form fields use HTML types and required attributes but have no dedicated schema validation. The server validates saved record shape with Zod; it does not validate each payload format by QR type.
+
+4. QR CUSTOMIZATION
+-------------------
+Implemented controls: foreground color, background color, size (200–700 px slider), margin (default is 2 but no UI control), and error-correction level L/M/Q/H. QR shape, eye style, gradient, frames, uploaded/custom logos, and logo-size controls are NOT IMPLEMENTED. The preview canvas uses the bundled logo; SVG export currently does not include imageSettings.
+
+5. EXPORT / DOWNLOAD
+--------------------
+PNG and SVG are implemented in Builder. PNG serializes the rendered canvas with canvas.toDataURL('image/png'). SVG serializes the hidden QRCodeSVG DOM node with XMLSerializer, wraps it in a Blob, creates an object URL, and clicks a temporary anchor. Files are generated fully in the browser as kenora-qr-[type].png or .svg. JPG, PDF, and server-side exports are NOT IMPLEMENTED.
+
+6. FRONTEND ARCHITECTURE
+------------------------
+Framework: React 18. Build tool: Vite 6. Routing: react-router-dom 7 BrowserRouter. HTTP: Axios. Icons: lucide-react. Styling: global CSS.
+
+client/
+├─ index.html                 HTML title and metadata
+├─ public/assets/             copied Kenora QR Studio and KenoraTech images
+├─ src/main.jsx               React, BrowserRouter, AppProvider bootstrap
+├─ src/App.jsx                current routes, layout, page and QR components
+├─ src/api.js                 Axios base URL and Bearer-token interceptor
+├─ src/data.js                QR type registry, defaults, payloadFor()
+├─ src/styles.css             primary responsive styles
+├─ src/theme.css              dark theme and floating switch styles
+└─ src/context/AppContext.jsx theme persistence and token state
+
+Pages are currently implemented as functions in App.jsx rather than separate files: Landing, Types, Builder, Collection, Features, Details, Auth/AuthPage. The QR preview is part of Builder; there is no separate preview component file.
+
+7. BACKEND ARCHITECTURE
+-----------------------
+Node.js/Express backend in server/src. server.js loads dotenv, tries mongoose.connect(MONGODB_URI), then listens on PORT (default 5000). app.js configures Helmet, CORS, JSON parsing (1 MB), Morgan, routes and errors.
+
+Routes: auth.routes.js offers POST /register, /login, GET /me and POST /logout. qr.routes.js protects all routes with auth middleware, then offers GET/POST /api/qr and GET/PUT/DELETE /api/qr/:id. Controllers contain current implementation; no separate service layer or file API exists.
+
+8. DATABASE
+-----------
+MongoDB is used via Mongoose. User collection/model (models/User.js): name, email, passwordHash, avatar, timestamps. QRCode (models/QRCode.js): userId reference to User, name, type, payload, customization, logo, timestamps. All QR reads, updates and deletes include userId from the verified JWT, so records are scoped to their owner.
+
+9. ENVIRONMENT VARIABLES
+------------------------
+No real values are included here.
+
+VARIABLE       | PURPOSE                                  | WHERE USED                  | SECRET | SIDE
+PORT           | Express listening port                   | server/src/server.js        | No     | Backend
+MONGODB_URI    | MongoDB connection string                | server/src/server.js        | Yes    | Backend
+JWT_SECRET     | signs/verifies 7-day JWTs                | utils/token.js, auth.js     | Yes    | Backend
+CLIENT_URL     | allowed CORS origin(s), comma-separated  | server/src/app.js           | No     | Backend
+VITE_API_URL   | optional frontend API base URL            | client/src/api.js           | No     | Frontend
+
+server/.env.example defines the first four. VITE_API_URL is optional and defaults to http://127.0.0.1:5000/api.
+
+10. SECURITY
+------------
+Implemented: bcryptjs hashes passwords with 12 rounds; JWT auth uses Authorization: Bearer; Zod validates registration/login and QR record boundaries; Helmet, CORS, a 1 MB JSON body limit, centralized error responses, and owner-scoped QR queries are present. .gitignore ignores .env and node_modules.
+
+Important gaps: tokens are stored in localStorage, not secure httpOnly cookies; no rate limiting, refresh/revocation, email verification, password reset, CSRF protection, upload endpoint, payload-specific server validation, or database connection fail-fast behavior is implemented. React escapes text rendered in JSX, but QR payloads are intentionally encoded and should be treated as untrusted when scanned.
+
+11. LOCAL DEVELOPMENT
+---------------------
+Prerequisites: Node.js (the project does not declare an engines version), npm, and a running MongoDB instance or hosted MongoDB URI.
+
+1. Copy server/.env.example to server/.env and provide MONGODB_URI and a strong JWT_SECRET. Set CLIENT_URL=http://127.0.0.1:5173.
+2. Run npm install at root, npm --prefix client install, and npm --prefix server install.
+3. Run npm run dev.
+
+Vite defaults to http://127.0.0.1:5173. Express defaults to http://127.0.0.1:5000. The API health URL is /api/health.
+
+12. BUILD
+---------
+npm run build runs npm --prefix client run build. Vite writes the frontend production bundle to client/dist. npm run client starts Vite; npm run server starts Node watch mode; server has npm start for production. There is no root production start command.
+
+13. GITHUB
+----------
+From the project root: git init; git add .; git commit -m "Initial Kenora QR Studio"; git branch -M main; git remote add origin YOUR_REPOSITORY_URL; git push -u origin main. Confirm .gitignore excludes .env, node_modules, and dist before adding files. Never commit secrets, passwords, private keys, or build dependency folders.
+
+14. VERCEL DEPLOYMENT
+---------------------
+Deploy only the frontend to Vercel. Create/connect a Vercel account to GitHub, import the repository, choose framework Vite, set Root Directory to client, Build Command to npm run build, and Output Directory to dist. Add VITE_API_URL=https://YOUR-RENDER-SERVICE.onrender.com/api (not a secret). Deploy and redeploy after API/domain changes. Configure a SPA rewrite if Vercel does not automatically serve index.html for direct /login or /my-qr-codes URLs.
+
+15. RENDER DEPLOYMENT
+---------------------
+The backend should run as a Render Web Service. Select the repository/branch, set Root Directory to server, Runtime Node, Build Command npm install, and Start Command npm start. Set PORT (Render supplies its own port if applicable), MONGODB_URI, JWT_SECRET, and CLIENT_URL to the deployed Vercel origin. Use GET /api/health as health check. Check Render logs for failed MongoDB connection or CORS errors.
+
+16. CUSTOM DOMAIN
+-----------------
+No intended domain is configured. In Vercel, add YOUR-DOMAIN.COM to the project and use the DNS records Vercel supplies. Add the final https://YOUR-DOMAIN.COM as CLIENT_URL on Render, then redeploy the backend. Vercel/Render provide SSL after DNS verification; do not invent DNS values.
+
+17. FRONTEND ↔ BACKEND
+-----------------------
+Browser → Vercel (React/Vite static site) → Axios VITE_API_URL → Render Express API → MongoDB. api.js attaches the localStorage JWT as an Authorization Bearer header. Express CORS compares the request origin to CLIENT_URL. Locally the fallback API base is http://127.0.0.1:5000/api.
+
+18. COMPLETE DATA FLOW
+----------------------
+User selects type → Builder state updates → payloadFor() creates payload → QRCodeCanvas/QRCodeSVG render live preview → user downloads browser-generated PNG/SVG. On Save, Axios POST /api/qr sends name/type/payload/customization → auth middleware verifies token → Zod validates record → Mongoose stores it with userId → private GET /api/qr retrieves it.
+
+19. QR CODE ARCHITECTURE
+------------------------
+Input fields in DynamicForm → values state → payloadFor(type, values) → qrcode.react value/config props → canvas/SVG preview → canvas data URL or serialized SVG Blob export. The client does not test scanability or validate payload semantics beyond form input behavior.
+
+20. MAINTENANCE
+---------------
+Update UI/routes in client/src/App.jsx and styles in styles.css/theme.css. Update QR payloads/types in client/src/data.js. Update the QR library in client/package.json then reinstall. Update API endpoints/controllers under server/src. Change displayed branding via client/public/assets and the logo constants in App.jsx. Change default colors in data.js or CSS variables. Change domain through VITE_API_URL and CLIENT_URL deployment variables.
+
+21. ADDING NEW FEATURES
+-----------------------
+New QR type: add tuple to types and payload case to payloadFor() in data.js, then add its DynamicForm case in App.jsx. New customization: add default in data.js, builder control/state in App.jsx, and pass supported qrcode.react props. New export: implement beside dl() in Builder. New page: add a component and Route in App.jsx. New persistent QR field: extend models/QRCode.js and qrSchema in controllers/qr.controller.js.
+
+22. TROUBLESHOOTING
+-------------------
+SYMPTOM: QR preview blank. CAUSE: payload/render error or browser console issue. FIX: inspect Builder inputs and browser console; test a URL payload.
+SYMPTOM: PNG/SVG download fails. CAUSE: browser download restrictions or DOM/canvas issue. FIX: use a supported browser and verify the preview first.
+SYMPTOM: Save/list returns 401. CAUSE: missing/expired local JWT. FIX: sign in again; API requires Authorization header.
+SYMPTOM: API fails. CAUSE: MONGODB_URI/JWT_SECRET missing or MongoDB unavailable. FIX: configure server/.env and inspect server logs.
+SYMPTOM: CORS error in production. CAUSE: CLIENT_URL does not match deployed frontend origin. FIX: set exact Vercel https origin and redeploy Render.
+SYMPTOM: Vercel 404 after refresh. CAUSE: SPA fallback not configured. FIX: configure a rewrite to index.html.
+
+23. KENORA QR STUDIO PRODUCTION CHECKLIST
+------------------------------------------
+[ ] Build works  [ ] .env ignored  [ ] No secrets committed  [ ] MongoDB/JWT/CLIENT_URL configured
+[ ] Registration and login work  [ ] All supported QR types tested  [ ] Preview works
+[ ] PNG/SVG download works  [ ] Save/list/delete owner checks work  [ ] Mobile/desktop tested
+[ ] CORS works  [ ] Domain/HTTPS works  [ ] API health check works
+
+24. BACKUP / RECOVERY
+---------------------
+Persistent QR/user data resides in MongoDB; configure backups through the selected MongoDB provider. Source recovery is through GitHub: clone the repository, install dependencies, restore environment variables securely, and redeploy. Generated downloads are not stored by the application.
+
+25. PROJECT FILE MAP
+--------------------
+Root: package.json, package-lock.json, README.md, .gitignore, assets/, client/, server/, guide.txt.
+Client files are listed in section 6. Server files: src/server.js (entry), app.js (middleware/routes), controllers/auth.controller.js and qr.controller.js, middleware/auth.js and error.js, models/User.js and QRCode.js, routes/auth.routes.js and qr.routes.js, utils/token.js. server/.env.example is configuration template.
+
+26. SERVICE MAP
+--------------
+SERVICE | PURPOSE | REQUIRED? | CONFIGURATION
+MongoDB | users and saved QR records | Yes for auth/save | MONGODB_URI
+Render  | recommended Express hosting | Production only | server root/env variables
+Vercel  | recommended React hosting | Production only | client root/VITE_API_URL
+GitHub  | source backup/deployment integration | Recommended | repository remote
+
+27. DEPLOYMENT ORDER
+--------------------
+1. Test local build and API. 2. Create MongoDB database. 3. Push to GitHub. 4. Deploy Render API and set MONGODB_URI/JWT_SECRET/CLIENT_URL. 5. Verify /api/health. 6. Deploy Vercel client with VITE_API_URL. 7. Update Render CLIENT_URL to final frontend origin. 8. Test auth, save, exports, and direct routes. 9. Connect custom domain. 10. Launch.
+
+28. SECURITY REMINDER
+---------------------
+Do not commit .env or place JWT_SECRET/MONGODB_URI in VITE_ variables. Rotate any accidentally exposed secret, remove it from Git history, and update local and production values.
+
+29. CURRENT PROJECT STATUS
+--------------------------
+WORKING: client-side preview, PNG/SVG export, supported payload builders, theme toggle, login/register API, JWT-protected QR CRUD, owner scoping, MongoDB models, API health route, production client build.
+REQUIRES CONFIGURATION: MongoDB URI, JWT secret, client/API URLs, deployment hosts and domain.
+PARTIALLY WORKING: QR record validation validates data shape but not type-specific payload semantics; server starts even if MongoDB cannot connect.
+NOT IMPLEMENTED: server-generated QR images, file/logo uploads, user avatar handling, password reset, refresh/revocation tokens, rate limiting, custom QR shapes/eyes, uploaded logo control, PDF/JPG export, pagination, analytics, tests, and a backend service layer.
+
+30. SCOPE NOTE
+--------------
+This guide describes Kenora QR Studio only and is based on the current source tree.
+
+31. VERIFICATION
+----------------
+guide.txt is located at the project root. It contains all requested numbered sections, uses the current package commands and filenames, and contains no actual secrets.
