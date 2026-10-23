@@ -9,7 +9,7 @@ import MediaFile from '../models/MediaFile.js';
 import { cloudinaryCaps, cloudinaryClient, mediaLimits, privateDownloadUrl, tokenForAsset } from '../utils/cloudinary.js';
 
 const expiries = { '1h': 1, '6h': 6, '24h': 24, '3d': 72, '7d': 168 };
-const shareSchema = z.object({ title: z.string().trim().min(2).max(100), description: z.string().trim().max(1000).optional().default(''), password: z.string().min(8).max(100), expiry: z.enum(['1h', '6h', '24h', '3d', '7d']) });
+const shareSchema = z.object({ title: z.string().trim().min(2).max(100), description: z.string().trim().max(1000).optional().default(''), password: z.string().max(100).optional().default('').refine(value => value.length === 0 || value.length >= 8, 'Password must be at least 8 characters.'), expiry: z.enum(['1h', '6h', '24h', '3d', '7d']) });
 const cleanName = value => value.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 180) || 'file';
 const currentStatus = share => share.status === 'active' && share.expiresAt <= new Date() ? 'expired' : share.status;
 const shareJson = share => ({ id: share._id, token: share.token, title: share.title, description: share.description, status: currentStatus(share), retention: share.retention, expiresAt: share.expiresAt, createdAt: share.createdAt, fileCount: share.fileCount, totalBytes: share.totalBytes, reservedBytes: share.reservedBytes });
@@ -27,6 +27,11 @@ function accessGrant(token, share) {
 }
 
 async function requireGrant(req, share) {
+  if (!share.passwordHash) {
+    const status = currentStatus(share);
+    if (status !== 'active') { const error = new Error(status === 'expired' ? 'This share has expired.' : 'This share is unavailable.'); error.status = 410; throw error; }
+    return;
+  }
   const header = req.headers.authorization || '';
   const grant = header.startsWith('Bearer ') ? header.slice(7) : '';
   try {
@@ -50,7 +55,7 @@ export async function createShare(req, res, next) {
   try {
     cloudinaryClient();
     const body = shareSchema.parse(req.body);
-    const share = await MediaShare.create({ ownerId: req.user.id, token: randomBytes(32).toString('base64url'), title: body.title, description: body.description, passwordHash: await bcrypt.hash(body.password, 12), expiresAt: new Date(Date.now() + expiries[body.expiry] * 3600000) });
+    const share = await MediaShare.create({ ownerId: req.user.id, token: randomBytes(32).toString('base64url'), title: body.title, description: body.description, ...(body.password ? { passwordHash: await bcrypt.hash(body.password, 12) } : {}), expiresAt: new Date(Date.now() + expiries[body.expiry] * 3600000) });
     res.status(201).json({ success: true, data: { share: shareJson(share) } });
   } catch (error) { if (error instanceof z.ZodError) error.status = 400; next(error); }
 }
@@ -79,7 +84,7 @@ export async function updateShare(req, res, next) {
     if (!share) return res.status(404).json({ success: false, message: 'Share not found' });
     if (input.title) share.title = input.title;
     if (input.description !== undefined) share.description = input.description;
-    if (input.password) share.passwordHash = await bcrypt.hash(input.password, 12);
+    if (input.password !== undefined) share.passwordHash = input.password ? await bcrypt.hash(input.password, 12) : undefined;
     if (input.expiry && currentStatus(share) === 'active') share.expiresAt = new Date(Date.now() + expiries[input.expiry] * 3600000);
     await share.save();
     res.json({ success: true, data: { share: shareJson(share) } });
@@ -199,7 +204,7 @@ async function releaseReservation(file, deleted = false) {
 }
 
 async function publicShareOrError(token) {
-  const share = await MediaShare.findOne({ token });
+  const share = await MediaShare.findOne({ token }).select('+passwordHash');
   if (!share) { const e = new Error('Share not found'); e.status = 404; throw e; }
   const status = currentStatus(share);
   if (status !== 'active') { if (status === 'expired' && share.status === 'active') await MediaShare.updateOne({ _id: share._id, status: 'active' }, { status: 'expired' }); const e = new Error(status === 'expired' ? 'This share has expired.' : 'This share is unavailable.'); e.status = 410; throw e; }
@@ -208,10 +213,10 @@ async function publicShareOrError(token) {
 
 export async function verifyPassword(req, res, next) {
   try {
-    const { password } = z.object({ password: z.string().min(1).max(100) }).parse(req.body);
+    const { password } = z.object({ password: z.string().min(8).max(100) }).parse(req.body);
     const share = await publicShareOrError(req.params.token);
     const privateShare = await MediaShare.findById(share._id).select('+passwordHash');
-    if (!await bcrypt.compare(password, privateShare.passwordHash)) return res.status(401).json({ success: false, message: 'Incorrect album password.' });
+    if (!privateShare.passwordHash || !await bcrypt.compare(password, privateShare.passwordHash)) return res.status(401).json({ success: false, message: 'Incorrect album password.' });
     res.json({ success: true, data: { grant: accessGrant(share.token, share), expiresIn: 900 } });
   } catch (error) { if (error instanceof z.ZodError) error.status = 400; next(error); }
 }
@@ -220,7 +225,7 @@ export async function publicAlbum(req, res, next) {
   try {
     const share = await publicShareOrError(req.params.token); await requireGrant(req, share);
     const files = await MediaFile.find({ shareId: share._id, status: 'uploaded' }).select('publicToken originalName mimeType format sizeBytes resourceType createdAt +publicToken');
-    res.set('Cache-Control', 'no-store').json({ success: true, data: { title: share.title, description: share.description, files: files.map(f => ({ id: f.publicToken, originalName: f.originalName, mimeType: f.mimeType, format: f.format, sizeBytes: f.sizeBytes, resourceType: f.resourceType })) } });
+    res.set('Cache-Control', 'no-store').json({ success: true, data: { title: share.title, description: share.description, passwordProtected: Boolean(share.passwordHash), files: files.map(f => ({ id: f.publicToken, originalName: f.originalName, mimeType: f.mimeType, format: f.format, sizeBytes: f.sizeBytes, resourceType: f.resourceType })) } });
   } catch (error) { next(error); }
 }
 

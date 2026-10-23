@@ -5,7 +5,7 @@ const mediaShareSchema = new mongoose.Schema({
   token: { type: String, required: true, unique: true, index: true },
   title: { type: String, required: true, trim: true, maxlength: 100 },
   description: { type: String, default: '', maxlength: 1000 },
-  passwordHash: { type: String, required: true, select: false },
+  passwordHash: { type: String, select: false },
   expiresAt: { type: Date, required: true, index: true },
   status: { type: String, enum: ['active', 'expired', 'revoked', 'deleting'], default: 'active', index: true },
   retention: { type: String, enum: ['pending', 'keep', 'delete'], default: 'pending' },
