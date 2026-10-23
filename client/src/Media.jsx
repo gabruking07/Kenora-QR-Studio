@@ -26,7 +26,7 @@ function ShareCard({ share, refresh, show }) {
 }
 
 function MediaDashboard() {
-  const [shares, setShares] = useState([]); const [form, setForm] = useState({ title: '', description: '', password: '', expiry: '24h' }); const [busy, setBusy] = useState(false); const [message, show] = useNotice(); const [items, setItems] = useState([]); const [lastShare, setLastShare] = useState(null); const aborts = useRef(new Map()); const previewUrls = useRef([]); const navigate = useNavigate();
+  const [shares, setShares] = useState([]); const [form, setForm] = useState({ title: '', description: '', password: '', expiry: '24h' }); const [busy, setBusy] = useState(false); const [message, show] = useNotice(); const [items, setItems] = useState([]); const [files, setFiles] = useState([]); const [lastShare, setLastShare] = useState(null); const aborts = useRef(new Map()); const previewUrls = useRef([]); const navigate = useNavigate();
   const refresh = async () => { try { const r = await api.get('/media/shares'); setShares(r.data.data.shares); } catch (e) { show(e.response?.data?.message || 'Could not load your shares.'); } };
   useEffect(() => { refresh(); }, []);
   const chooseFiles = e => { const selected = [...e.target.files]; previewUrls.current.forEach(url => URL.revokeObjectURL(url)); previewUrls.current = selected.filter(f => imageFile(f)).map(f => URL.createObjectURL(f)); let previewIndex = 0; setFiles(selected); setItems(selected.map(f => ({ file: f, preview: imageFile(f) ? previewUrls.current[previewIndex++] : '', status: 'ready', progress: 0 }))); }; useEffect(() => () => previewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
