@@ -19,7 +19,7 @@ function ShareCard({ share, refresh, show }) {
   const copy = async () => { await navigator.clipboard.writeText(url); show('Share link copied.'); };
   const shareNative = async () => { if (navigator.share) { try { await navigator.share({ title: share.title, url }); } catch {} } else copy(); };
   const revoke = async () => { if (confirm('Revoke this link now? Friends will lose access immediately.')) { await api.post(`/media/shares/${share.id}/revoke`); refresh(); } };
-  const deletePermanently = async () => { if (confirm('Permanently delete this share and its Cloudinary files? This cannot be undone.')) { await api.delete(`/media/shares/${share.id}`); refresh(); } };
+  const deletePermanently = async () => { if (confirm('Permanently delete this share and its Cloudinary files? This cannot be undone.')) { try { await api.delete(`/media/shares/${share.id}`); show('Share and its files deleted.'); refresh(); } catch (e) { show(e.response?.data?.message || 'Could not delete this share. Try again.'); } } };
   const savePassword = async e => { e.preventDefault(); await api.patch(`/media/shares/${share.id}`, { password }); setPassword(''); show('Album password updated.'); };
   const saveExpiry = async () => { try { await api.patch(`/media/shares/${share.id}`, { expiry }); show('Album expiry updated.'); refresh(); } catch (e) { show(e.response?.data?.message || 'Could not update album expiry.'); } };
   const retention = async action => { if (action === 'delete' && !confirm('Permanently delete all files for this expired album? This cannot be undone.')) return; try { const r = await api.post(`/media/shares/${share.id}/retention`, { action }); show(r.data.message); refresh(); } catch (e) { show(e.response?.data?.message || 'Some files could not be deleted. Retry the delete action.'); } };
@@ -45,10 +45,13 @@ function MediaDashboard() {
       await api.post(`/media/shares/${share.id}/uploads/${pendingId}/complete`);
       setItems(current => current.map((x, i) => i === index ? { ...x, status: 'complete', progress: 100 } : x));
       aborts.current.delete(index);
+      return true;
     } catch (e) {
       if (pendingId) await api.delete(`/media/shares/${share.id}/uploads/${pendingId}`).catch(() => {});
-      setItems(current => current.map((x, i) => i === index ? { ...x, status: e.code === 'ERR_CANCELED' ? 'cancelled' : 'failed', error: e.response?.data?.message || (e.code === 'ERR_CANCELED' ? 'Cancelled' : 'Upload failed. Retry this file.') } : x));
+      const uploadError = e.response?.data?.error?.message || e.response?.data?.message || e.message;
+      setItems(current => current.map((x, i) => i === index ? { ...x, status: e.code === 'ERR_CANCELED' ? 'cancelled' : 'failed', error: e.code === 'ERR_CANCELED' ? 'Cancelled' : (uploadError || 'Upload failed. Retry this file.') } : x));
       aborts.current.delete(index);
+      return false;
     }
   };
   const create = async e => {
@@ -56,9 +59,12 @@ function MediaDashboard() {
     setBusy(true);
     try {
       const created = await api.post('/media/shares', form); const share = created.data.data.share; setLastShare(share);
-      for (let i = 0; i < files.length; i++) await uploadOne(share, files[i], i);
-      await refresh(); setForm({ title: '', description: '', password: '', expiry: '24h' });
-      show(`Album created. Share link: ${publicUrl(share.token)}`); navigate('/media', { replace: true });
+      let failed = 0;
+      for (let i = 0; i < files.length; i++) if (!await uploadOne(share, files[i], i)) failed++;
+      await refresh();
+      if (failed) show(`Album created, but ${failed} upload${failed === 1 ? '' : 's'} failed. See each file's error and retry.`);
+      else { setForm({ title: '', description: '', password: '', expiry: '24h' }); setFiles([]); setItems([]); show(`Album and uploads created. Share link: ${publicUrl(share.token)}`); }
+      navigate('/media', { replace: true });
     } catch (e) { show(e.response?.data?.message || 'Could not create the album.'); }
     finally { setBusy(false); }
   };

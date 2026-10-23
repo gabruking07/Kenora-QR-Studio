@@ -287,11 +287,11 @@ export async function retention(req, res, next) {
 }
 
 async function deleteShareAssets(share) {
-  const cloudinary = cloudinaryClient();
+  const files = await MediaFile.find({ shareId: share._id, status: { $in: ['uploaded', 'delete_failed', 'pending'] } }).select('+cloudinaryPublicId');
+  const cloudinary = files.length ? cloudinaryClient() : null;
   share = await MediaShare.findOneAndUpdate({ _id: share._id, status: { $in: ['active', 'expired', 'revoked', 'deleting'] } }, { status: 'deleting', retention: 'delete' }, { new: true });
   if (!share) { const error = new Error('Share is already unavailable. Refresh your share list.'); error.status = 409; throw error; }
   if (share.reservedCount > 0) { const error = new Error('Uploads are still in progress. Cancel them or wait for cleanup, then retry deletion.'); error.status = 409; throw error; }
-  const files = await MediaFile.find({ shareId: share._id, status: { $in: ['uploaded', 'delete_failed', 'pending'] } }).select('+cloudinaryPublicId');
   let failures = [];
   for (const type of ['image', 'video']) {
     const batch = files.filter(f => f.resourceType === type);
