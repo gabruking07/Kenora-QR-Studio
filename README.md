@@ -16,11 +16,13 @@ A production-minded full-stack QR code studio for KenoraTech. It creates branded
 
 ## Setup
 
-1. Copy `server/.env.example` to `server/.env` and supply `MONGODB_URI` and a strong `JWT_SECRET`.
+1. Copy `server/.env.example` to `server/.env`, set `MONGODB_URI` to a reachable MongoDB instance, and replace `JWT_SECRET` with a strong random value. The example URI expects MongoDB to be running locally; for Atlas, use your cluster connection string and allow the development machine's IP in the cluster network access settings.
 2. Run `npm install` at the repository root, then run `npm install` in both `client` and `server`.
 3. Start development with `npm run dev`.
 
 Client: `http://127.0.0.1:5173` · API: `http://127.0.0.1:5000`
+
+The API connects to MongoDB before it starts listening. If the connection fails, startup prints the connection error and exits instead of accepting login requests that would otherwise time out.
 
 ## Commands
 
