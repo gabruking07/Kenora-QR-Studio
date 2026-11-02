@@ -11,6 +11,8 @@ const prettySize = n => n < 1048576 ? `${Math.ceil(n / 1024)} KB` : `${(n / 1048
 const publicUrl = token => `${location.origin}/media/${token}`;
 const videoFile = file => file.type.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/i.test(file.name);
 const imageFile = file => file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|avif|heic|heif)$/i.test(file.name);
+const maxFileBytes = file => (videoFile(file) ? 100 : 10) * 1024 * 1024;
+const sizeError = file => file.size > maxFileBytes(file) ? `${videoFile(file) ? 'Videos' : 'Photos'} must be ${videoFile(file) ? '100' : '10'} MB or less.` : '';
 
 function useNotice() { const [notice, setNotice] = useState(''); const show = message => { setNotice(message); setTimeout(() => setNotice(''), 4500); }; return [notice, show]; }
 
@@ -30,7 +32,7 @@ function MediaDashboard() {
   const [shares, setShares] = useState([]); const [form, setForm] = useState({ title: '', description: '', password: '', expiry: '24h' }); const [busy, setBusy] = useState(false); const [message, show] = useNotice(); const [items, setItems] = useState([]); const [files, setFiles] = useState([]); const [lastShare, setLastShare] = useState(null); const aborts = useRef(new Map()); const previewUrls = useRef([]); const navigate = useNavigate();
   const refresh = async () => { try { const r = await api.get('/media/shares'); setShares(r.data.data.shares); } catch (e) { show(e.response?.data?.message || 'Could not load your shares.'); } };
   useEffect(() => { refresh(); }, []);
-  const chooseFiles = e => { const selected = [...e.target.files]; previewUrls.current.forEach(url => URL.revokeObjectURL(url)); previewUrls.current = selected.filter(f => imageFile(f)).map(f => URL.createObjectURL(f)); let previewIndex = 0; setFiles(selected); setItems(selected.map(f => ({ file: f, preview: imageFile(f) ? previewUrls.current[previewIndex++] : '', status: 'ready', progress: 0 }))); }; useEffect(() => () => previewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
+  const chooseFiles = e => { const selected = [...e.target.files]; previewUrls.current.forEach(url => URL.revokeObjectURL(url)); previewUrls.current = selected.filter(f => imageFile(f)).map(f => URL.createObjectURL(f)); let previewIndex = 0; setFiles(selected); setItems(selected.map(f => { const error = sizeError(f); return { file: f, preview: imageFile(f) ? previewUrls.current[previewIndex++] : '', status: error ? 'failed' : 'ready', progress: 0, error }; })); if (selected.some(f => sizeError(f))) show('Photos must be 10 MB or less and videos must be 100 MB or less. Remove oversized files before creating the share.'); }; useEffect(() => () => previewUrls.current.forEach(url => URL.revokeObjectURL(url)), []);
   const uploadOne = async (share, file, index) => {
     setItems(current => current.map((x, i) => i === index ? { ...x, status: 'preparing', error: '', shareId: share.id } : x));
     let pendingId;
@@ -56,6 +58,7 @@ function MediaDashboard() {
   };
   const create = async e => {
     e.preventDefault(); if (!files.length) { show('Choose at least one photo or video.'); return; }
+    if (files.some(file => sizeError(file))) { show('Photos must be 10 MB or less and videos must be 100 MB or less. Remove oversized files before creating the share.'); return; }
     setBusy(true);
     try {
       const created = await api.post('/media/shares', form); const share = created.data.data.share; setLastShare(share);
