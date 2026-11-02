@@ -58,7 +58,7 @@ test('a user cannot access another owner’s media share', async t => {
 
 test('incorrect album passwords do not issue access grants', async t => {
   const share = { _id: '66b000000000000000000002', token: 'sample-private-token', status: 'active', expiresAt: new Date(Date.now() + 60000) };
-  t.mock.method(MediaShare, 'findOne', async () => share);
+  t.mock.method(MediaShare, 'findOne', () => ({ select: async () => share }));
   t.mock.method(MediaShare, 'findById', () => ({ select: async () => ({ ...share, passwordHash: 'hashed-password' }) }));
   t.mock.method(bcrypt, 'compare', async () => false);
   const response = await request(app).post('/api/media/public/sample-private-token/verify-password').send({ password: 'wrong-password' });
@@ -67,7 +67,7 @@ test('incorrect album passwords do not issue access grants', async t => {
 });
 
 test('expired shares reject public access before requiring a grant', async t => {
-  t.mock.method(MediaShare, 'findOne', async () => ({ _id: '66b000000000000000000003', token: 'expired-token', status: 'expired', expiresAt: new Date(Date.now() - 1000) }));
+  t.mock.method(MediaShare, 'findOne', () => ({ select: async () => ({ _id: '66b000000000000000000003', token: 'expired-token', status: 'expired', expiresAt: new Date(Date.now() - 1000) }) }));
   const response = await request(app).get('/api/media/public/expired-token');
   assert.equal(response.status, 410);
 });
