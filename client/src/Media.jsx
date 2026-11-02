@@ -14,7 +14,7 @@ const imageFile = file => file.type.startsWith('image/') || /\.(jpe?g|png|webp|g
 const maxFileBytes = file => (videoFile(file) ? 100 : 10) * 1024 * 1024;
 const sizeError = file => file.size > maxFileBytes(file) ? `${videoFile(file) ? 'Videos' : 'Photos'} must be ${videoFile(file) ? '100' : '10'} MB or less.` : '';
 
-function useNotice() { const [notice, setNotice] = useState(''); const show = message => { setNotice(message); setTimeout(() => setNotice(''), 4500); }; return [notice, show]; }
+function useNotice() { const [notice, setNotice] = useState(''); const timer = useRef(); const show = message => { setNotice(message); clearTimeout(timer.current); timer.current = setTimeout(() => setNotice(''), 4500); }; useEffect(() => () => clearTimeout(timer.current), []); return [notice, show]; }
 
 function ShareCard({ share, refresh, show }) {
   const [password, setPassword] = useState(''); const [expiry, setExpiry] = useState('24h'); const url = publicUrl(share.token); const status = share.status;
